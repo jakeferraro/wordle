@@ -1,78 +1,106 @@
-'''
-CS 122 Spring 2023 Project 9-2
-Author: Jake Ferraro
-Credit: realpython.com, freecodecamp.com
-Description: Personal Project: Wordle - loops, file paths, dictionaries
-'''
+# WORDLE clone
+
+import contextlib
 import pathlib
 import random
-import doctest
-from string import ascii_letters
+from string import ascii_letters, ascii_uppercase
+from rich.console import Console
+from rich.theme import Theme
 
-def get_random_word(word_list):
-    '''selects a random 5-letter word from a list of strings
+console = Console(width = 40, theme = Theme({"warning": "red on yellow"}))
 
-    >>> get_random_word(['snake', 'worm', 'bug'])
-    'SNAKE'
-    '''
-    words = [
-        word.upper()
-        for word in word_list
-        if len(word) == 5 and all(letter in ascii_letters for letter in word)
-    ]
+num_letters = 5
+num_guesses = 6
+words_path = pathlib.Path("wordlist.txt")
 
-    return random.choice(words)
 
-def show_guess(guess, word):
-    '''shows the user's guess on the terminal, classifies letters
 
-    >>> show_guess('CRANE', 'SNAKE')
-    Correct letters: A, E
-    Misplaced letters: N
-    Wrong letters: C, R
-    '''
-    if guess == word:
-        print('Correct!')
-        return
-    
-    correct_letters = {
-        letter for letter, correct in zip(guess, word) if letter == correct
-    }
-    misplaced_letters = set(guess) & set(word) -  correct_letters
-    wrong_letters = set(guess) - set(word)
-
-    print('Correct letters:', ', '.join(sorted(correct_letters)))
-    print('Misplaced letters:', ', '.join(sorted(misplaced_letters)))
-    print('Wrong letters:', ', '.join(sorted(wrong_letters)))
+def refresh_page(headline):
+    console.clear()
+    console.rule(f"{headline}\n")
 
     return
 
-def game_over(word):
-    '''prints the word once the game has ended
+def get_random_word(word_list):
+    if words := [
+        word.upper()
+        for word in word_list
+        if len(word) == num_letters and all(letter in ascii_letters for letter in word)
+    ]:
+        return random.choice(words)
+    else:
+        console.print(f"No words of length {num_letters} in the word list", style = "warning")
+        raise SystemExit()
 
-    >>> game_over('SNAKE')
-    The word was SNAKE
-    '''
-    print(f'The word was {word}')
+    return
+
+def guess_word(previous_guesses):
+    guess = console.input("\nGuess word: ").upper()
+
+    if guess in previous_guesses:
+        console.print(f"You've already guessed {guess}.", style = "warning")
+        return guess_word(previous_guesses)
+
+    if len(guess) != num_letters:
+        console.print(f"Your guess must be {num_letters} letters.", style = "warning")
+        return guess_word(previous_guesses)
+
+    if any((invalid := letter) not in ascii_letters for letter in guess):
+        console.print(
+            f"Invalid letter: '{invalid}'. Please use English letters.",
+            style = "warning",
+        )
+        return guess_word(previous_guesses)
+    
+    return guess
+
+def show_guesses(guesses, word):
+    letter_status = {letter: letter for letter in ascii_uppercase}
+    for guess in guesses:
+        styled_guess = []
+        for letter, correct in zip(guess, word):
+            if letter == correct:
+                style = "bold white on green"
+            elif letter in word:
+                style = "bold white on yellow"
+            elif letter in ascii_letters:
+                style = "white on #666666"
+            else:
+                style = "dim"
+            styled_guess.append(f"[{style}]{letter}[/]")
+            if letter != "_":
+                letter_status[letter] = f"[{style}]{letter}[/]"
+
+        console.print("".join(styled_guess), justify = "center")
+    console.print("\n" + "".join(letter_status.values()), justify = "center")
+
+    return
+
+def game_over(guesses, word, guessed_correctly):
+    refresh_page(headline = "Game Over")
+    show_guesses(guesses, word)
+
+    if guessed_correctly:
+        console.print(f"\n[bold white on green]Correct, the word is {word}[/]")
+    else:
+        console.print(f"\n[bold white on red]Sorry, the word was {word}[/]")
 
 def main():
-    '''top-level function'''
-    words_path = pathlib.Path('wordlist.txt')
-    word = get_random_word(words_path.read_text(encoding='utf-8').split('\n'))
-    print(word)
+    """top-level function"""
+    word = get_random_word(words_path.read_text(encoding="utf-8").split("\n"))
+    guesses = ["_" * num_letters] * num_guesses
 
-    for guess_num in range(1, 7):
-        guess = input(f'\nGuess {guess_num}: ').upper()
+    with contextlib.suppress(KeyboardInterrupt):
+        for idx in range(num_guesses):
+            refresh_page(headline = f"Guess {idx + 1}")
+            show_guesses(guesses, word)
 
-        show_guess(guess, word)
-        if guess == word:
-            break
+            guesses[idx] = guess_word(previous_guesses = guesses[:idx])
+            if guesses[idx] == word:
+                break
 
-    else:
-        game_over(word)
+    game_over(guesses, word, guessed_correctly=guesses[idx] == word)
 
     return
 
 main()
-
-print(doctest.testmod())
